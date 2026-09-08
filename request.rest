@@ -1,0 +1,172 @@
+### =========================================================
+### SERVICE MASTER — REST Client Test File
+### Service Data Master (Beasiswa & Persyaratan)
+### Diakses lewat API Gateway (thin-proxy, tanpa validasi token —
+### service ini melakukan verifikasi JWT sendiri)
+### =========================================================
+
+# @gatewayUrl : base URL gateway (ganti sesuai gateway kamu)
+@gatewayUrl = http://localhost:8080/api
+# @token : access token dari service-rbac (login sebagai Admin)
+@token = ISI_ACCESS_TOKEN_SETELAH_LOGIN
+
+### -------------------------------------------------------
+### HEALTH CHECK
+### -------------------------------------------------------
+
+### Cek service hidup (health pada service langsung, bukan di gateway)
+GET http://localhost:5002/health
+
+
+### =========================================================
+### BEASISWA — Endpoint Publik
+### =========================================================
+
+### List beasiswa aktif (statusAktif=true & tanggalTutup >= hari ini)
+GET {{gatewayUrl}}/master/beasiswa?page=1&limit=10
+
+
+### List beasiswa aktif dengan filter search (contains/nama)
+GET {{gatewayUrl}}/master/beasiswa?search=Prestasi&page=1&limit=10
+
+
+### Detail beasiswa + daftar persyaratan (publik)
+GET {{gatewayUrl}}/master/beasiswa/1
+
+
+### Detail beasiswa yang tidak aktif/sudah tutup (harus 404 generik)
+GET {{gatewayUrl}}/master/beasiswa/3
+
+
+### =========================================================
+### BEASISWA — Admin only (authenticate + authorize('admin'))
+### =========================================================
+
+### List SEMUA beasiswa termasuk nonaktif/sudah lewat (panel admin)
+GET {{gatewayUrl}}/master/beasiswa/all?page=1&limit=10
+Authorization: Bearer {{token}}
+
+
+### Create beasiswa baru (kuota > 0, tanggalTutup > tanggalBuka)
+# @name createBeasiswa
+POST {{gatewayUrl}}/master/beasiswa
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nama": "Beasiswa Talenta Digital 2026",
+  "deskripsi": "Beasiswa pelatihan coding untuk talenta muda Indonesia.",
+  "kuota": 30,
+  "tanggalBuka": "2026-09-01T00:00:00.000Z",
+  "tanggalTutup": "2026-12-31T23:59:59.000Z"
+}
+
+
+### Test validasi: kuota 0 (harus 400, bukan 500)
+POST {{gatewayUrl}}/master/beasiswa
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nama": "Kuarto Zero",
+  "deskripsi": "Test validasi kuota.",
+  "kuota": 0,
+  "tanggalBuka": "2026-09-01T00:00:00.000Z",
+  "tanggalTutup": "2026-12-31T23:59:59.000Z"
+}
+
+
+### Test validasi: tanggalTutup sebelum tanggalBuka (harus 400)
+POST {{gatewayUrl}}/master/beasiswa
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nama": "Tanggal Terbalik",
+  "deskripsi": "Test validasi tanggal.",
+  "kuota": 10,
+  "tanggalBuka": "2026-12-01T00:00:00.000Z",
+  "tanggalTutup": "2026-11-01T00:00:00.000Z"
+}
+
+
+### Update beasiswa (semua field optional, tanggal diisi bersamaan)
+# @id = createBeasiswa id dari response di atas
+PUT {{gatewayUrl}}/master/beasiswa/4
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "nama": "Beasiswa Talenta Digital 2026 Updated",
+  "kuota": 40
+}
+
+
+### SOFT DELETE: nonaktifkan beasiswa (statusAktif=false, baris tetap ada)
+DELETE {{gatewayUrl}}/master/beasiswa/4
+Authorization: Bearer {{token}}
+
+
+### Test proteksi publik: akses DELETE tanpa token (harus 401)
+DELETE {{gatewayUrl}}/master/beasiswa/1
+
+
+### =========================================================
+### PERSYARATAN — Endpoint Publik
+### =========================================================
+
+### List persyaratan milik beasiswa tertentu (dipakai wizard aplikasi)
+GET {{gatewayUrl}}/master/persyaratan/beasiswa/1/persyaratan
+
+
+### List persyaratan beasiswa yang tidak ada (harus 404)
+GET {{gatewayUrl}}/master/persyaratan/beasiswa/999/persyaratan
+
+
+### =========================================================
+### PERSYARATAN — Admin only
+### =========================================================
+
+### Create persyaratan baru (beasiswaId harus exist — kalau tidak, 404 bukan FK error)
+POST {{gatewayUrl}}/master/persyaratan
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "beasiswaId": 1,
+  "namaDokumen": "Surat Pernyataan Kesanggupan",
+  "wajib": true
+}
+
+
+### Create persyaratan untuk beasiswa yang tidak ada (harus 404, bukan raw FK error)
+POST {{gatewayUrl}}/master/persyaratan
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "beasiswaId": 999,
+  "namaDokumen": "Dokumen Tidak Valid",
+  "wajib": true
+}
+
+
+### Update persyaratan (ubah wajib / nama dokumen)
+PUT {{gatewayUrl}}/master/persyaratan/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "namaDokumen": "KTP yang Diperbarui",
+  "wajib": true
+}
+
+
+### HARD DELETE: hapus persyaratan permanen
+DELETE {{gatewayUrl}}/master/persyaratan/1
+Authorization: Bearer {{token}}
+
+
+### Test proteksi role: coba akses admin pakai token applicant (harus 403)
+GET {{gatewayUrl}}/master/beasiswa/all
+Authorization: Bearer ISI_TOKEN_APPLICANT_DISINI

@@ -1,52 +1,37 @@
 import { prisma } from "../../config/prisma.js";
 import { AppError } from "../../utils/AppError.js";
-import type { CreatePersyaratanInput, PersyaratanQueryInput, UpdatePersyaratanInput } from "./schema.js";
+import type { CreatePersyaratanInput, UpdatePersyaratanInput } from "./schema.js";
 
 const persyaratanSelect = {
   id: true,
   beasiswaId: true,
-  nama: true,
-  deskripsi: true,
-  urutan: true,
+  namaDokumen: true,
+  wajib: true,
   createdAt: true,
-  updatedAt: true,
 } as const;
 
-export async function listPersyaratan(query: PersyaratanQueryInput) {
-  const { page, limit, search, beasiswaId } = query;
-  const skip = (page - 1) * limit;
+export async function listPersyaratanByBeasiswa(beasiswaId: number) {
+  const beasiswa = await prisma.beasiswa.findUnique({
+    where: { id: beasiswaId },
+    select: { id: true },
+  });
 
-  const where = {
-    deletedAt: null,
-    ...(beasiswaId ? { beasiswaId } : {}),
-    ...(search ? { nama: { contains: search } } : {}),
-  };
+  if (!beasiswa) {
+    throw new AppError(404, "Beasiswa tidak ditemukan");
+  }
 
-  const [data, total] = await Promise.all([
-    prisma.persyaratan.findMany({
-      where,
-      select: persyaratanSelect,
-      orderBy: { urutan: "asc" },
-      skip,
-      take: limit,
-    }),
-    prisma.persyaratan.count({ where }),
-  ]);
+  const persyaratan = await prisma.persyaratan.findMany({
+    where: { beasiswaId },
+    select: persyaratanSelect,
+    orderBy: { id: "asc" },
+  });
 
-  return {
-    data,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-    },
-  };
+  return persyaratan;
 }
 
 export async function getPersyaratanById(id: number) {
-  const persyaratan = await prisma.persyaratan.findFirst({
-    where: { id, deletedAt: null },
+  const persyaratan = await prisma.persyaratan.findUnique({
+    where: { id },
     select: persyaratanSelect,
   });
 
@@ -58,8 +43,11 @@ export async function getPersyaratanById(id: number) {
 }
 
 export async function createPersyaratan(data: CreatePersyaratanInput) {
-  const beasiswa = await prisma.beasiswa.findFirst({
-    where: { id: data.beasiswaId, deletedAt: null },
+  // Validasi manual beasiswaId sebelum insert supaya tidak memunculkan
+  // foreign key error mentah (kode P2003) dari Prisma ke client.
+  const beasiswa = await prisma.beasiswa.findUnique({
+    where: { id: data.beasiswaId },
+    select: { id: true },
   });
 
   if (!beasiswa) {
@@ -69,9 +57,8 @@ export async function createPersyaratan(data: CreatePersyaratanInput) {
   const persyaratan = await prisma.persyaratan.create({
     data: {
       beasiswaId: data.beasiswaId,
-      nama: data.nama,
-      deskripsi: data.deskripsi ?? null,
-      urutan: data.urutan,
+      namaDokumen: data.namaDokumen,
+      wajib: data.wajib,
     },
     select: persyaratanSelect,
   });
@@ -80,23 +67,19 @@ export async function createPersyaratan(data: CreatePersyaratanInput) {
 }
 
 export async function updatePersyaratan(id: number, data: UpdatePersyaratanInput) {
-  const existing = await prisma.persyaratan.findFirst({
-    where: { id, deletedAt: null },
-  });
+  const existing = await prisma.persyaratan.findUnique({ where: { id } });
 
   if (!existing) {
     throw new AppError(404, "Persyaratan tidak ditemukan");
   }
 
   const updateData: {
-    nama?: string;
-    deskripsi?: string | null;
-    urutan?: number;
+    namaDokumen?: string;
+    wajib?: boolean;
   } = {};
 
-  if (data.nama !== undefined) updateData.nama = data.nama;
-  if (data.deskripsi !== undefined) updateData.deskripsi = data.deskripsi ?? null;
-  if (data.urutan !== undefined) updateData.urutan = data.urutan;
+  if (data.namaDokumen !== undefined) updateData.namaDokumen = data.namaDokumen;
+  if (data.wajib !== undefined) updateData.wajib = data.wajib;
 
   const persyaratan = await prisma.persyaratan.update({
     where: { id },
@@ -107,19 +90,20 @@ export async function updatePersyaratan(id: number, data: UpdatePersyaratanInput
   return persyaratan;
 }
 
-export async function softDeletePersyaratan(id: number) {
-  const existing = await prisma.persyaratan.findFirst({
-    where: { id, deletedAt: null },
-  });
+// HARD DELETE sengaja dipakai untuk Persyaratan (berbeda dari Beasiswa yang
+// memakai soft delete = statusAktif false). Alasannya: id persyaratan TIDAK
+// direferensikan langsung oleh service lain (mis. service-transaksi), sehingga
+// menghapus baris persyaratan tidak akan memutus data rujukan lintas service.
+// Sebaliknya, beasiswaId direferensikan oleh pendaftaran aktif di service lain,
+// maka Beasiswa wajib memakai soft delete agar referensi itu tidak hilang.
+export async function deletePersyaratan(id: number) {
+  const existing = await prisma.persyaratan.findUnique({ where: { id } });
 
   if (!existing) {
     throw new AppError(404, "Persyaratan tidak ditemukan");
   }
 
-  await prisma.persyaratan.update({
-    where: { id },
-    data: { deletedAt: new Date() },
-  });
+  await prisma.persyaratan.delete({ where: { id } });
 
-  return { message: "Persyaratan berhasil dihapus" };
+  return { message: "Persyaratan berhasil dihapus permanen" };
 }

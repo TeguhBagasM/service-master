@@ -1,64 +1,33 @@
 import { prisma } from "../../config/prisma.js";
 import { AppError } from "../../utils/AppError.js";
-import type { CreateBeasiswaInput, BeasiswaQueryInput, UpdateBeasiswaInput } from "./schema.js";
+import type { BeasiswaQueryInput, CreateBeasiswaInput, UpdateBeasiswaInput } from "./schema.js";
 
 const beasiswaSelect = {
   id: true,
   nama: true,
   deskripsi: true,
-  status: true,
+  kuota: true,
+  tanggalBuka: true,
+  tanggalTutup: true,
+  statusAktif: true,
   createdAt: true,
   updatedAt: true,
 } as const;
 
 const persyaratanSelect = {
   id: true,
-  nama: true,
-  deskripsi: true,
-  urutan: true,
-  createdAt: true,
-  updatedAt: true,
+  namaDokumen: true,
+  wajib: true,
 } as const;
-
-export async function listBeasiswa(query: BeasiswaQueryInput) {
-  const { page, limit, search, status } = query;
-  const skip = (page - 1) * limit;
-
-  const where = {
-    deletedAt: null,
-    ...(status ? { status } : {}),
-    ...(search ? { nama: { contains: search } } : {}),
-  };
-
-  const [data, total] = await Promise.all([
-    prisma.beasiswa.findMany({
-      where,
-      select: beasiswaSelect,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: limit,
-    }),
-    prisma.beasiswa.count({ where }),
-  ]);
-
-  return {
-    data,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-    },
-  };
-}
 
 export async function listBeasiswaAktif(query: BeasiswaQueryInput) {
   const { page, limit, search } = query;
   const skip = (page - 1) * limit;
+  const now = new Date();
 
   const where = {
-    deletedAt: null,
-    status: "AKTIF" as const,
+    statusAktif: true,
+    tanggalTutup: { gte: now },
     ...(search ? { nama: { contains: search } } : {}),
   };
 
@@ -75,49 +44,47 @@ export async function listBeasiswaAktif(query: BeasiswaQueryInput) {
 
   return {
     data,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-    },
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  };
+}
+
+export async function listAllBeasiswa(query: BeasiswaQueryInput) {
+  const { page, limit, search } = query;
+  const skip = (page - 1) * limit;
+
+  const where = {
+    ...(search ? { nama: { contains: search } } : {}),
+  };
+
+  const [data, total] = await Promise.all([
+    prisma.beasiswa.findMany({
+      where,
+      select: beasiswaSelect,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
+    }),
+    prisma.beasiswa.count({ where }),
+  ]);
+
+  return {
+    data,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
   };
 }
 
 export async function getBeasiswaById(id: number) {
-  const beasiswa = await prisma.beasiswa.findFirst({
-    where: { id, deletedAt: null },
+  const now = new Date();
+
+  const beasiswa = await prisma.beasiswa.findUnique({
+    where: { id },
     select: {
       ...beasiswaSelect,
-      persyaratan: {
-        where: { deletedAt: null },
-        select: persyaratanSelect,
-        orderBy: { urutan: "asc" },
-      },
+      persyaratan: { select: persyaratanSelect },
     },
   });
 
-  if (!beasiswa) {
-    throw new AppError(404, "Beasiswa tidak ditemukan");
-  }
-
-  return beasiswa;
-}
-
-export async function getBeasiswaDetail(id: number) {
-  const beasiswa = await prisma.beasiswa.findFirst({
-    where: { id, deletedAt: null, status: "AKTIF" },
-    select: {
-      ...beasiswaSelect,
-      persyaratan: {
-        where: { deletedAt: null },
-        select: persyaratanSelect,
-        orderBy: { urutan: "asc" },
-      },
-    },
-  });
-
-  if (!beasiswa) {
+  if (!beasiswa || !beasiswa.statusAktif || beasiswa.tanggalTutup < now) {
     throw new AppError(404, "Beasiswa tidak ditemukan");
   }
 
@@ -128,8 +95,10 @@ export async function createBeasiswa(data: CreateBeasiswaInput) {
   const beasiswa = await prisma.beasiswa.create({
     data: {
       nama: data.nama,
-      deskripsi: data.deskripsi ?? null,
-      status: data.status,
+      deskripsi: data.deskripsi,
+      kuota: data.kuota,
+      tanggalBuka: data.tanggalBuka,
+      tanggalTutup: data.tanggalTutup,
     },
     select: beasiswaSelect,
   });
@@ -138,9 +107,7 @@ export async function createBeasiswa(data: CreateBeasiswaInput) {
 }
 
 export async function updateBeasiswa(id: number, data: UpdateBeasiswaInput) {
-  const existing = await prisma.beasiswa.findFirst({
-    where: { id, deletedAt: null },
-  });
+  const existing = await prisma.beasiswa.findUnique({ where: { id } });
 
   if (!existing) {
     throw new AppError(404, "Beasiswa tidak ditemukan");
@@ -148,13 +115,17 @@ export async function updateBeasiswa(id: number, data: UpdateBeasiswaInput) {
 
   const updateData: {
     nama?: string;
-    deskripsi?: string | null;
-    status?: "AKTIF" | "NONAKTIF";
+    deskripsi?: string;
+    kuota?: number;
+    tanggalBuka?: Date;
+    tanggalTutup?: Date;
   } = {};
 
   if (data.nama !== undefined) updateData.nama = data.nama;
-  if (data.deskripsi !== undefined) updateData.deskripsi = data.deskripsi ?? null;
-  if (data.status !== undefined) updateData.status = data.status;
+  if (data.deskripsi !== undefined) updateData.deskripsi = data.deskripsi;
+  if (data.kuota !== undefined) updateData.kuota = data.kuota;
+  if (data.tanggalBuka !== undefined) updateData.tanggalBuka = data.tanggalBuka;
+  if (data.tanggalTutup !== undefined) updateData.tanggalTutup = data.tanggalTutup;
 
   const beasiswa = await prisma.beasiswa.update({
     where: { id },
@@ -166,44 +137,19 @@ export async function updateBeasiswa(id: number, data: UpdateBeasiswaInput) {
 }
 
 export async function softDeleteBeasiswa(id: number) {
-  const existing = await prisma.beasiswa.findFirst({
-    where: { id, deletedAt: null },
-  });
+  const existing = await prisma.beasiswa.findUnique({ where: { id } });
 
   if (!existing) {
     throw new AppError(404, "Beasiswa tidak ditemukan");
   }
 
-  await prisma.$transaction([
-    prisma.beasiswa.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    }),
-    prisma.persyaratan.updateMany({
-      where: { beasiswaId: id, deletedAt: null },
-      data: { deletedAt: new Date() },
-    }),
-  ]);
-
-  return { message: "Beasiswa dan persyaratan terkait berhasil dihapus" };
-}
-
-export async function deactivateBeasiswa(id: number) {
-  const existing = await prisma.beasiswa.findFirst({
-    where: { id, deletedAt: null },
-  });
-
-  if (!existing) {
-    throw new AppError(404, "Beasiswa tidak ditemukan");
-  }
-
-  if (existing.status === "NONAKTIF") {
-    throw new AppError(400, "Beasiswa sudah nonaktif");
+  if (!existing.statusAktif) {
+    throw new AppError(400, "Beasiswa sudah tidak aktif");
   }
 
   const beasiswa = await prisma.beasiswa.update({
     where: { id },
-    data: { status: "NONAKTIF" },
+    data: { statusAktif: false },
     select: beasiswaSelect,
   });
 

@@ -7,37 +7,29 @@ datasource db {
 }
 
 model Beasiswa {
-  id          Int            @id @default(autoincrement())
-  nama        String         @db.VarChar(255)
-  deskripsi   String?        @db.Text
-  status      BeasiswaStatus @default(AKTIF)
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
-  deletedAt   DateTime?      @map("deleted_at")
-  persyaratan Persyaratan[]
+  id           Int           @id @default(autoincrement())
+  nama         String        @db.VarChar(255)
+  deskripsi    String        @db.Text
+  kuota        Int
+  tanggalBuka  DateTime      @map("tanggal_buka")
+  tanggalTutup DateTime      @map("tanggal_tutup")
+  statusAktif  Boolean       @default(true) @map("status_aktif")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  persyaratan  Persyaratan[]
 
-  @@index([status])
-  @@index([deletedAt])
+  @@index([statusAktif])
   @@map("beasiswa")
 }
 
 model Persyaratan {
-  id          Int       @id @default(autoincrement())
-  beasiswaId  Int       @map("beasiswa_id")
-  nama        String    @db.VarChar(255)
-  deskripsi   String?   @db.Text
-  urutan      Int       @default(0)
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
-  beasiswa    Beasiswa  @relation(fields: [beasiswaId], references: [id])
+  id          Int      @id @default(autoincrement())
+  beasiswaId  Int      @map("beasiswa_id")
+  namaDokumen String   @db.VarChar(255) @map("nama_dokumen")
+  wajib       Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  beasiswa    Beasiswa @relation(fields: [beasiswaId], references: [id])
 
   @@index([beasiswaId])
-  @@index([deletedAt])
   @@map("persyaratan")
-}
-
-enum BeasiswaStatus {
-  AKTIF
-  NONAKTIF
 }

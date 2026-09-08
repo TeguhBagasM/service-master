@@ -1,39 +1,32 @@
 import { Router } from "express";
 import { authenticate } from "../../middlewares/authenticate.js";
 import { authorize } from "../../middlewares/authorize.js";
-import { validateBody, validateQuery, validateParams } from "../../middlewares/validate.js";
-import { idParamSchema } from "../../utils/schemas.js";
+import { validateBody, validateParams } from "../../middlewares/validate.js";
+import { idParamSchema, beasiswaIdParamSchema } from "../../utils/schemas.js";
+import { createPersyaratanSchema, updatePersyaratanSchema } from "./schema.js";
 import {
-  createPersyaratanSchema,
-  updatePersyaratanSchema,
-  persyaratanQuerySchema,
-} from "./schema.js";
-import {
-  listPersyaratanHandler,
-  getPersyaratanByIdHandler,
+  listPersyaratanByBeasiswaHandler,
   createPersyaratanHandler,
   updatePersyaratanHandler,
-  softDeletePersyaratanHandler,
+  deletePersyaratanHandler,
 } from "./controller.js";
 
 export const persyaratanRouter = Router();
 
+// ── Publik ────────────────────────────────────────────────
+// Dipakai frontend applicant untuk tahu dokumen apa yang harus diupload
+// sebelum submit wizard pendaftaran.
 persyaratanRouter.get(
-  "/",
-  validateQuery(persyaratanQuerySchema),
-  listPersyaratanHandler,
+  "/beasiswa/:beasiswaId/persyaratan",
+  validateParams(beasiswaIdParamSchema),
+  listPersyaratanByBeasiswaHandler,
 );
 
-persyaratanRouter.get(
-  "/:id",
-  validateParams(idParamSchema),
-  getPersyaratanByIdHandler,
-);
-
+// ── Admin only ────────────────────────────────────────────
 persyaratanRouter.post(
   "/",
   authenticate,
-  authorize("Admin"),
+  authorize("admin"),
   validateBody(createPersyaratanSchema),
   createPersyaratanHandler,
 );
@@ -41,7 +34,7 @@ persyaratanRouter.post(
 persyaratanRouter.put(
   "/:id",
   authenticate,
-  authorize("Admin"),
+  authorize("admin"),
   validateParams(idParamSchema),
   validateBody(updatePersyaratanSchema),
   updatePersyaratanHandler,
@@ -50,7 +43,7 @@ persyaratanRouter.put(
 persyaratanRouter.delete(
   "/:id",
   authenticate,
-  authorize("Admin"),
+  authorize("admin"),
   validateParams(idParamSchema),
-  softDeletePersyaratanHandler,
+  deletePersyaratanHandler,
 );

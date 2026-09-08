@@ -1,18 +1,12 @@
 import type { Request, Response } from "express";
 import { sendSuccess } from "../../utils/response.js";
-import type { CreatePersyaratanInput, PersyaratanQueryInput, UpdatePersyaratanInput } from "./schema.js";
+import type { CreatePersyaratanInput, UpdatePersyaratanInput } from "./schema.js";
 import * as service from "./service.js";
 
-export async function listPersyaratanHandler(req: Request, res: Response) {
-  const query = req.query as unknown as PersyaratanQueryInput;
-  const result = await service.listPersyaratan(query);
-  sendSuccess(res, "Daftar persyaratan", result);
-}
-
-export async function getPersyaratanByIdHandler(req: Request, res: Response) {
-  const id = Number(req.params["id"]);
-  const persyaratan = await service.getPersyaratanById(id);
-  sendSuccess(res, "Detail persyaratan", persyaratan);
+export async function listPersyaratanByBeasiswaHandler(req: Request, res: Response) {
+  const beasiswaId = Number(req.params["beasiswaId"]);
+  const persyaratan = await service.listPersyaratanByBeasiswa(beasiswaId);
+  sendSuccess(res, "Daftar persyaratan beasiswa", persyaratan);
 }
 
 export async function createPersyaratanHandler(req: Request, res: Response) {
@@ -28,8 +22,8 @@ export async function updatePersyaratanHandler(req: Request, res: Response) {
   sendSuccess(res, "Persyaratan berhasil diperbarui", persyaratan);
 }
 
-export async function softDeletePersyaratanHandler(req: Request, res: Response) {
+export async function deletePersyaratanHandler(req: Request, res: Response) {
   const id = Number(req.params["id"]);
-  const result = await service.softDeletePersyaratan(id);
+  const result = await service.deletePersyaratan(id);
   sendSuccess(res, result.message, null);
 }

@@ -1,0 +1,97 @@
+# =========================================================
+# SERVICE MASTER — docker-compose SNIPPET
+# Potongan ini untuk digabung ke root docker-compose.yml
+# (TeguhBagasM-TestFullStack/docker-compose.yml).
+#
+# Dua blok yang perlu ditambahkan / diganti di root compose:
+#   1. service `db-master`   → sudah ada di root compose, tapi BELUM
+#      terhubung ke network `beasiswa-internal-net`. Blok di bawah adalah
+#      versi lengkapnya (dengan networks + healthcheck).
+#   2. service `service-master` → BELUM ada di root compose.
+#
+# Catatan penting: JWT_SECRET service-master HARUS sama dengan
+# JWT_SECRET service-rbac (shared secret untuk verifikasi token).
+# =========================================================
+
+services:
+  # -------------------------------------------------------
+  # DATABASE KHUSUS service-master
+  #
+  # TRADE-OFF: DB terpisah (container sendiri) vs sharing instance MySQL.
+  #
+  # Di project ini kita pakai SATU container MySQL PER SERVICE (db-master,
+  # db-rbac, db-transaksi, dll). Keuntungan: isolasi penuh — query berat di
+  # satu service tidak mempengaruhi performa service lain, credential DB
+  # tidak terbagi, dan migrasi/hapus satu service tidak menyentuh yang lain.
+  # Kekurangan: pemakaian resource lebih boros (tiap container punya proses,
+  # memori, disk sendiri) dan lebih banyak instance untuk di-monitor.
+  #
+  # Alternatif yang LEBIH HEMAT resource: pakai 1 container MySQL saja lalu
+  # buat beberapa DATABASE/SCHEMA di dalamnya (mis. db_rbac, db_master,
+  # db_transaksi). Kekurangannya: TIDAK ada locking keamanan antar schema
+  # kalau dikelola root, dan satu beban tinggi bisa mengganggu service lain.
+  #
+  # Keputusan project: container terpisah, dan yang PALING PENTING — nama
+  # database service ini TETAP DIPISAHKAN (db_master, bukan db_rbac). Ini
+  # wajib karena service ini TIDAK BOLEH tahu/mengakses data pengguna RBAC.
+  # -------------------------------------------------------
+  db-master:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password}
+      # Nama database DIPISAHKAN dari db-rbac (db_master, bukan db_rbac).
+      MYSQL_DATABASE: ${MASTER_DATABASE:-db_master}
+    # ===== DEV ONLY =====
+    # Port MySQL di-publish ke host hanya untuk debugging langsung
+    # (mis. koneksi lewat Workbench / prisma studio dari host).
+    # Di PRODUCTION blok ports ini HAPUS — hanya internal network.
+    ports:
+      - "3307:3306"
+    volumes:
+      # Named volume → data MySQL tetap ada walau container dihapus/rebuild.
+      - master_data:/var/lib/mysql
+    networks:
+      - beasiswa-internal-net
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # -------------------------------------------------------
+  # SERVICE MASTER (Node.js/Express container)
+  # -------------------------------------------------------
+  service-master:
+    build:
+      context: ./service-master
+    env_file:
+      - ./service-master/.env
+    environment:
+      NODE_ENV: development
+      PORT: "5002"
+      # Koneksi ke db-master lewat nama service di docker network,
+      # BUKAN localhost:3307 (itu hanya untuk akses dari host).
+      DATABASE_URL: "mysql://root:${MYSQL_ROOT_PASSWORD:-password}@db-master:3306/${MASTER_DATABASE:-db_master}"
+    # ===== DEV ONLY =====
+    # Port di-publish supaya bisa diakses/test langsung dari host (request.rest).
+    # Di environment PRODUCTION port ini TIDAK BOLEH di-publish ke host —
+    # hanya API Gateway yang boleh mengekspos port ke luar. Semua request
+    # dari client masuk lewat gateway menuju service-master di internal network.
+    ports:
+      - "5002:5002"
+    depends_on:
+      db-master:
+        condition: service_healthy
+    networks:
+      - beasiswa-internal-net
+
+# -------------------------------------------------------
+# Yang JANGAN di-duplicate (sudah ada di root compose):
+#   networks:
+#     beasiswa-internal-net:
+#       name: beasiswa-internal-net
+#       driver: bridge
+#   volumes:
+#     master_data:
+# -------------------------------------------------------
