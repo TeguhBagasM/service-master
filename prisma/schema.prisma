@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Beasiswa {
+  id          Int            @id @default(autoincrement())
+  nama        String         @db.VarChar(255)
+  deskripsi   String?        @db.Text
+  status      BeasiswaStatus @default(AKTIF)
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  deletedAt   DateTime?      @map("deleted_at")
+  persyaratan Persyaratan[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("beasiswa")
+}
+
+model Persyaratan {
+  id          Int       @id @default(autoincrement())
+  beasiswaId  Int       @map("beasiswa_id")
+  nama        String    @db.VarChar(255)
+  deskripsi   String?   @db.Text
+  urutan      Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  beasiswa    Beasiswa  @relation(fields: [beasiswaId], references: [id])
+
+  @@index([beasiswaId])
+  @@index([deletedAt])
+  @@map("persyaratan")
+}
+
+enum BeasiswaStatus {
+  AKTIF
+  NONAKTIF
+}
