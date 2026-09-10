@@ -28,7 +28,20 @@ export function validateQuery(schema: ZodTypeAny) {
       respondInvalid(res, result.error);
       return;
     }
-    Object.assign(req.query, result.data);
+    // Di Express 5, `req.query` adalah GETTER yang di-parse ulang dari URL
+    // dan mengembalikan objek BARU setiap kali dibaca — tidak di-cache
+    // (beda dengan req.body yang properti biasa). Akibatnya
+    // `Object.assign(req.query, result.data)` hanya memutasi objek sementara
+    // yang langsung dibuang: nilai ter-coerce (page/limit jadi number,
+    // default schema) tidak pernah sampai ke controller/service.
+    // Solusinya: shadow property getter dengan defineProperty di instance,
+    // sehingga pembacaan req.query berikutnya mengembalikan hasil parse.
+    Object.defineProperty(req, "query", {
+      value: result.data,
+      configurable: true,
+      enumerable: true,
+      writable: true,
+    });
     next();
   };
 }
